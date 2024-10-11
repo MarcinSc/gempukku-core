@@ -4,44 +4,20 @@ import com.gempukku.context.processor.inject.InjectionException
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
-import java.util.*
-import java.util.concurrent.Callable
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ThreadFactory
-import java.util.concurrent.TimeUnit
+import java.util.function.Supplier
 
-class WorkerThreadExecutorSystem : SystemDecorator {
-    private val singleThreadFactory = SingleThreadFactory()
-    private val resultsToCopy: MutableList<Pair<Future<Future<Any>>, CompletableFuture<Any>>> =
-        Collections.synchronizedList(LinkedList())
-
+class WorkerThreadExecutorSystem(threadName: String = "Worker-Thread") : SystemDecorator {
+    private val singleThreadFactory = SingleThreadFactory(threadName)
     val executorService: ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor(singleThreadFactory).also {
             // Ensure thread is created
-            it.execute {}
+            it.submit {}.get()
         }
-
-    init {
-        executorService.scheduleAtFixedRate({
-            synchronized(resultsToCopy) {
-                val iterator = resultsToCopy.iterator()
-                while (iterator.hasNext()) {
-                    val resultCopy = iterator.next()
-                    if (resultCopy.first.isDone) {
-                        val innerFuture = resultCopy.first.get() as Future<Any>
-                        if (innerFuture.isDone) {
-                            val value = innerFuture.get()
-                            resultCopy.second.complete(value)
-                            iterator.remove()
-                        }
-                    }
-                }
-            }
-        }, 100, 100, TimeUnit.MILLISECONDS)
-    }
 
     override fun <T> decorate(system: T, systemClass: Class<T>): T {
         val methodsThatCanBeOffloadedToWorkerThread = mutableSetOf<Method>()
@@ -62,13 +38,12 @@ class WorkerThreadExecutorSystem : SystemDecorator {
                             callMethod(system, method, args)
                         }
                     } else {
-                        val completableFuture = CompletableFuture<Any>()
-                        val callMethodCallable = Callable<Any> {
-                            callMethod(system, method, args)
+                        val methodCall = Supplier<Future<Any>> {
+                            callMethod(system, method, args) as Future<Any>
                         }
-                        val future = executorService.submit(callMethodCallable)
-                        resultsToCopy.add((future as Future<Future<Any>>) to completableFuture)
-                        completableFuture
+                        CompletableFuture.supplyAsync(methodCall, executorService).thenApply {
+                            it.get()
+                        }
                     }
                 } else {
                     throw InjectionException(
@@ -90,10 +65,10 @@ class WorkerThreadExecutorSystem : SystemDecorator {
         }
 }
 
-private class SingleThreadFactory : ThreadFactory {
+private class SingleThreadFactory(private val threadName: String) : ThreadFactory {
     var singleThread: Thread? = null
 
     override fun newThread(r: Runnable): Thread {
-        return Thread(r).also { singleThread = it }
+        return Thread(r, threadName).also { singleThread = it }
     }
 }
