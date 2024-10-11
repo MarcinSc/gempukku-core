@@ -78,13 +78,13 @@ class ChatApiSystem(private val urlPrefix: String) : LifecycleObserver {
     override fun afterContextStartup() {
         deregistration.add(
             server.registerRequestHandler(
-                HttpMethod.GET, Pattern.compile("$urlPrefix.*"),
+                HttpMethod.GET, Pattern.compile("$urlPrefix/.*"),
                 executeGetChat()
             )
         )
         deregistration.add(
             server.registerRequestHandler(
-                HttpMethod.POST, Pattern.compile("$urlPrefix.*"),
+                HttpMethod.POST, Pattern.compile("$urlPrefix/.*"),
                 executePostChat()
             )
         )
