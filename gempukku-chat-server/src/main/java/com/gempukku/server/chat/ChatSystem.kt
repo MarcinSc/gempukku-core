@@ -35,7 +35,9 @@ class ChatSystem : ChatInterface {
         return chatRooms[roomName]?.joinUser(
             playerId,
             admin,
-            { !(ignoreSystem?.isIgnored(playerId, it) ?: false) },
+            Predicate.not {
+                ignoreSystem?.isIgnored(playerId, it) ?: false
+            },
             chatStream
         )
     }
