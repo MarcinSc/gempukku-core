@@ -6,9 +6,7 @@ import org.w3c.dom.Element
 import javax.xml.parsers.DocumentBuilderFactory
 
 class XmlEventSink(
-    private val rootName: String,
-    private val pollIdParameter: String,
-    private val pollId: String,
+    private val rootEventsCreator: (Document) -> Element,
     private val responseWriter: ResponseWriter
 ) : EventSink<(Document) -> Element> {
     override fun processEvents(events: List<(Document) -> Element>) {
@@ -16,8 +14,7 @@ class XmlEventSink(
         val documentBuilder = documentBuilderFactory.newDocumentBuilder()
 
         val document = documentBuilder.newDocument()
-        val root = document.createElement(rootName)
-        root.setAttribute(pollIdParameter, pollId)
+        val root = rootEventsCreator(document)
         events.forEach {
             root.appendChild(it.invoke(document))
         }
@@ -29,9 +26,17 @@ class XmlEventSink(
         val documentBuilder = documentBuilderFactory.newDocumentBuilder()
 
         val document = documentBuilder.newDocument()
-        val root = document.createElement(rootName)
-        root.setAttribute(pollIdParameter, pollId)
+        rootEventsCreator(document)
 
         responseWriter.writeXmlResponse(document)
+    }
+}
+
+fun createRootElement(rootName: String, pollIdParameter: String, pollId: String): (Document) -> Element {
+    return {
+        val root = it.createElement(rootName)
+        root.setAttribute(pollIdParameter, pollId)
+        it.appendChild(root)
+        root
     }
 }

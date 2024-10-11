@@ -14,6 +14,7 @@ import com.gempukku.server.login.LoggedUserSystem
 import com.gempukku.server.login.getActingAsUser
 import com.gempukku.server.polling.LongPolling
 import com.gempukku.server.polling.XmlEventSink
+import com.gempukku.server.polling.createRootElement
 import org.commonmark.Extension
 import org.commonmark.ext.autolink.AutolinkExtension
 import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
@@ -123,7 +124,12 @@ class ChatApiSystem(private val urlPrefix: String) : LifecycleObserver {
 
             val pollId = request.getFormParameter(pollIdParameterName) ?: throw HttpProcessingException(404)
             val found =
-                longPolling.registerSink(pollId, XmlEventSink("chat", pollIdParameterName, pollId, responseWriter))
+                longPolling.registerSink(
+                    pollId, XmlEventSink(
+                        createRootElement("chat", pollIdParameterName, pollId),
+                        responseWriter
+                    )
+                )
             if (!found)
                 throw HttpProcessingException(404)
         }
@@ -145,7 +151,12 @@ class ChatApiSystem(private val urlPrefix: String) : LifecycleObserver {
                 throw HttpProcessingException(404)
             }
             val pollId = longPolling.registerLongPoll(gatheringChatStream.gatheringStream, added)
-            longPolling.registerSink(pollId, XmlEventSink("chat", pollIdParameterName, pollId, responseWriter))
+            longPolling.registerSink(
+                pollId, XmlEventSink(
+                    createRootElement("chat", pollIdParameterName, pollId),
+                    responseWriter
+                )
+            )
         }
 
     override fun beforeContextStopped() {
