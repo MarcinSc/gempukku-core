@@ -140,7 +140,6 @@ class ChatApiSystem(private val urlPrefix: String) : LifecycleObserver {
             val actAsUser =
                 getActingAsUser(loggedUserSystem, request, adminRole, request.getQueryParameter(actAsParameter))
             val gatheringChatStream = GatheringXmlChatStream()
-            // TODO: Finish ignoring people
             val added = chat.joinUser(
                 roomName,
                 actAsUser.playerId,
