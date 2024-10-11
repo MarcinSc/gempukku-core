@@ -81,7 +81,7 @@ class WorkerThreadExecutorSystem(threadName: String = "Worker-Thread") : SystemD
         if (args == null) {
             method.invoke(system)
         } else {
-            method.invoke(system, args)
+            method.invoke(system, *args)
         }
 }
 

@@ -27,25 +27,38 @@ class AnnotationSystemInjector(
     }
 
     private fun processInjectProperty(field: Field, system: Any) {
-        propertyResolver?.let {
-            val injectAnnotation = field.getAnnotation(InjectProperty::class.java)
-            val fieldType = field.type
-            if (fieldType == String::class.java) {
+        if (propertyResolver == null)
+            throw InjectionException("Unable to inject property, property resolver is missing")
+
+        val injectAnnotation = field.getAnnotation(InjectProperty::class.java)
+        val fieldType = field.type
+        when (fieldType) {
+            String::class.java -> {
                 field.trySetAccessible()
                 field.set(system, propertyResolver.resolveProperty(injectAnnotation.value, ""))
-            } else if (fieldType == Int::class.java) {
+            }
+
+            Int::class.java -> {
                 field.trySetAccessible()
                 field.setInt(system, propertyResolver.resolveProperty(injectAnnotation.value, "0")!!.toInt())
-            } else if (fieldType == Long::class.java) {
+            }
+
+            Long::class.java -> {
                 field.trySetAccessible()
                 field.setLong(system, propertyResolver.resolveProperty(injectAnnotation.value, "0")!!.toLong())
-            } else if (fieldType == Float::class.java) {
+            }
+
+            Float::class.java -> {
                 field.trySetAccessible()
                 field.setFloat(system, propertyResolver.resolveProperty(injectAnnotation.value, "0")!!.toFloat())
-            } else if (fieldType == Double::class.java) {
+            }
+
+            Double::class.java -> {
                 field.trySetAccessible()
                 field.setDouble(system, propertyResolver.resolveProperty(injectAnnotation.value, "0")!!.toDouble())
-            } else if (fieldType == Boolean::class.java) {
+            }
+
+            Boolean::class.java -> {
                 field.trySetAccessible()
                 field.setBoolean(system, propertyResolver.resolveProperty(injectAnnotation.value, "0")!!.toBoolean())
             }

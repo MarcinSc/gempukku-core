@@ -9,6 +9,9 @@ class ChatSystem : ChatInterface {
     @Inject(allowsNull = true)
     private var ignoreSystem: IgnoreSystem? = null
 
+    @Inject(allowsNull = true)
+    private var messageProcessor: ChatMessageProcessor? = null
+
     private val chatRooms: MutableMap<String, ChatRoom> = mutableMapOf()
 
     override fun createChatRoom(
@@ -47,10 +50,10 @@ class ChatSystem : ChatInterface {
     }
 
     override fun sendMessage(roomName: String, playerId: String, message: String, admin: Boolean) {
-        chatRooms[roomName]?.sendMessage(playerId, message, admin)
+        chatRooms[roomName]?.sendMessage(playerId, messageProcessor?.processMessage(message) ?: message, admin)
     }
 
     override fun sendToUser(roomName: String, from: String, to: String, message: String, admin: Boolean) {
-        chatRooms[roomName]?.sendToUser(from, to, message, admin)
+        chatRooms[roomName]?.sendToUser(from, to, messageProcessor?.processMessage(message) ?: message, admin)
     }
 }

@@ -1,0 +1,8 @@
+server:
+  netty:
+    port: 8080
+roles:
+  admin: a
+parameterNames:
+  actAsParameter: participantId
+  pollId: pollId

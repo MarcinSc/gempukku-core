@@ -1,14 +1,16 @@
 package com.gempukku.server.netty
 
-import com.gempukku.context.ContextScheduledExecutor
 import com.gempukku.context.lifecycle.LifecycleObserver
 import com.gempukku.context.processor.inject.Inject
 import com.gempukku.context.processor.inject.InjectProperty
 import com.gempukku.context.resolver.expose.Exposes
+import com.gempukku.context.update.UpdatedSystem
 import com.gempukku.server.BanChecker
 import com.gempukku.server.HttpMethod
 import com.gempukku.server.HttpProcessingException
+import com.gempukku.server.HttpRequest
 import com.gempukku.server.HttpServerSystem
+import com.gempukku.server.ResponseWriter
 import com.gempukku.server.ServerRequestHandler
 import io.netty.bootstrap.ServerBootstrap
 import io.netty.channel.Channel
@@ -22,19 +24,19 @@ import io.netty.handler.codec.http.HttpObjectAggregator
 import io.netty.handler.codec.http.HttpServerCodec
 import io.netty.handler.logging.LogLevel
 import io.netty.handler.logging.LoggingHandler
+import java.util.*
 import java.util.regex.Pattern
 
-@Exposes(LifecycleObserver::class, HttpServerSystem::class)
-class NettyServerSystem : LifecycleObserver, HttpServerSystem {
+@Exposes(LifecycleObserver::class, HttpServerSystem::class, UpdatedSystem::class)
+class NettyServerSystem : LifecycleObserver, HttpServerSystem, UpdatedSystem {
 
-    @InjectProperty("port")
+    @InjectProperty("server.netty.port")
     private var port: Int = 8080
 
     @Inject(allowsNull = true)
     private var banChecker: BanChecker? = null
 
-    @Inject
-    private lateinit var contextExecutor: ContextScheduledExecutor
+    private val pendingRequests: MutableList<PendingRequest> = Collections.synchronizedList(mutableListOf())
 
     private val registrations: MutableList<Registration> = mutableListOf()
 
@@ -72,19 +74,7 @@ class NettyServerSystem : LifecycleObserver, HttpServerSystem {
                         GempukkuHttpRequestHandler(
                             banChecker,
                             { uri, request, remoteIp, responseWriter ->
-                                val registration = registrations.firstOrNull {
-                                    it.method == request.method && it.uriPattern.matcher(uri).matches()
-                                }
-                                registration?.let {
-                                    contextExecutor.submit {
-                                        registration.requestHandler.handleRequest(
-                                            uri,
-                                            request,
-                                            remoteIp,
-                                            responseWriter
-                                        )
-                                    }
-                                } ?: throw HttpProcessingException(404)
+                                pendingRequests.add(PendingRequest(uri, request, remoteIp, responseWriter))
                             }
                         ))
                 }
@@ -101,7 +91,36 @@ class NettyServerSystem : LifecycleObserver, HttpServerSystem {
         workerGroup?.shutdownGracefully()
         bossGroup?.shutdownGracefully()
     }
+
+    override fun update() {
+        pendingRequests.forEach { request ->
+            val registration = registrations.firstOrNull {
+                it.method == request.request.method && it.uriPattern.matcher(request.uri).matches()
+            }
+            try {
+                registration?.let {
+                    registration.requestHandler.handleRequest(
+                        request.uri,
+                        request.request,
+                        request.remoteIp,
+                        request.responseWriter
+                    )
+                } ?: throw HttpProcessingException(404)
+            } catch (exp: HttpProcessingException) {
+                request.responseWriter.writeError(exp.status, mapOf("message" to exp.message))
+            } catch (exp: Exception) {
+                request.responseWriter.writeError(500)
+            }
+        }
+    }
 }
+
+private data class PendingRequest(
+    val uri: String,
+    val request: HttpRequest,
+    val remoteIp: String,
+    val responseWriter: ResponseWriter,
+)
 
 private data class Registration(
     val method: HttpMethod,

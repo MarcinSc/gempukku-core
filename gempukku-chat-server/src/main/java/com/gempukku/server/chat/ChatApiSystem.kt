@@ -15,19 +15,6 @@ import com.gempukku.server.login.getActingAsUser
 import com.gempukku.server.polling.LongPolling
 import com.gempukku.server.polling.XmlEventSink
 import com.gempukku.server.polling.createRootElement
-import org.commonmark.Extension
-import org.commonmark.ext.autolink.AutolinkExtension
-import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
-import org.commonmark.node.Image
-import org.commonmark.node.Link
-import org.commonmark.node.Node
-import org.commonmark.node.Text
-import org.commonmark.parser.Parser
-import org.commonmark.renderer.NodeRenderer
-import org.commonmark.renderer.html.HtmlNodeRendererContext
-import org.commonmark.renderer.html.HtmlRenderer
-import org.commonmark.renderer.html.HtmlWriter
-import java.util.*
 import java.util.regex.Pattern
 
 @Exposes(LifecycleObserver::class)
@@ -54,27 +41,6 @@ class ChatApiSystem(private val urlPrefix: String) : LifecycleObserver {
     private lateinit var pollIdParameterName: String
 
     private val deregistration: MutableList<Runnable> = mutableListOf()
-    private val markdownParser: Parser
-    private val markdownRenderer: HtmlRenderer
-
-    init {
-        val adminExt: List<Extension> = listOf(StrikethroughExtension.create(), AutolinkExtension.create())
-        markdownParser = Parser.builder()
-            .extensions(adminExt)
-            .build()
-        markdownRenderer = HtmlRenderer.builder()
-            .nodeRendererFactory { htmlContext ->
-                LinkShredder(
-                    htmlContext
-                )
-            }
-            .extensions(adminExt)
-            .escapeHtml(true)
-            .sanitizeUrls(true)
-            .softbreak("<br />")
-            .build()
-
-    }
 
     override fun afterContextStartup() {
         deregistration.add(
@@ -91,35 +57,39 @@ class ChatApiSystem(private val urlPrefix: String) : LifecycleObserver {
         )
     }
 
-    private val quoteExtender: Pattern = Pattern.compile("^([ \t]*>[ \t]*.+)(?=\n[ \t]*[^>])", Pattern.MULTILINE)
+    private fun executeGetChat(): (uri: String, request: HttpRequest, remoteIp: String, responseWriter: ResponseWriter) -> Unit =
+        { uri, request, _, responseWriter ->
+            val roomName = uri.substring(urlPrefix.length + 1)
+            val actAsUser =
+                getActingAsUser(loggedUserSystem, request, adminRole, request.getQueryParameter(actAsParameter))
+            val gatheringChatStream = GatheringXmlChatStream()
+            val added = chat.joinUser(
+                roomName,
+                actAsUser.playerId,
+                actAsUser.roles.contains(adminRole),
+                gatheringChatStream
+            )
+            if (added == null) {
+                throw HttpProcessingException(404)
+            }
+            val pollId = longPolling.registerLongPoll(gatheringChatStream.gatheringStream, added)
+            longPolling.registerSink(
+                pollId, XmlEventSink(
+                    createRootElement("chat", pollIdParameterName, pollId),
+                    responseWriter
+                )
+            )
+        }
 
     private fun executePostChat(): (uri: String, request: HttpRequest, remoteIp: String, responseWriter: ResponseWriter) -> Unit =
         { uri, request, _, responseWriter ->
-            val roomName = uri.substring(urlPrefix.length)
+            val roomName = uri.substring(urlPrefix.length + 1)
             val actAsUserSystem =
                 getActingAsUser(loggedUserSystem, request, adminRole, request.getFormParameter(actAsParameter))
             val message = request.getFormParameter("message")
 
-            if (message != null && message.trim().length > 0) {
-                var newMsg: String
-                newMsg = message.trim { it <= ' ' }.replace("\n\n\n+".toRegex(), "\n\n\n")
-                newMsg = quoteExtender.matcher(newMsg).replaceAll("$1\n")
-
-                //Escaping underscores so that URLs with lots of underscores (i.e. wiki links) aren't mangled
-                // Besides, who uses _this_ instead of *this*?
-                newMsg = newMsg.replace("_", "\\_")
-
-                //Need to preserve any commands being made
-                if (!newMsg.startsWith("/")) {
-                    newMsg = markdownRenderer.render(markdownParser.parse(newMsg))
-                    // Prevent quotes with newlines from displaying side-by-side
-                    newMsg =
-                        newMsg.replace("</blockquote>[\n \t]*<blockquote>".toRegex(), "</blockquote><br /><blockquote>")
-                    //Make all links open in a new tab
-                    newMsg = newMsg.replace("<(a href=\".*?\")>".toRegex(), "<$1 target=\"blank\">")
-                }
-
-                chat.sendMessage(roomName, actAsUserSystem.playerId, newMsg, actAsUserSystem.roles.contains(adminRole))
+            if (message != null && message.trim().isNotEmpty()) {
+                chat.sendMessage(roomName, actAsUserSystem.playerId, message, actAsUserSystem.roles.contains(adminRole))
             }
 
             val pollId = request.getFormParameter(pollIdParameterName) ?: throw HttpProcessingException(404)
@@ -134,77 +104,10 @@ class ChatApiSystem(private val urlPrefix: String) : LifecycleObserver {
                 throw HttpProcessingException(404)
         }
 
-    private fun executeGetChat(): (uri: String, request: HttpRequest, remoteIp: String, responseWriter: ResponseWriter) -> Unit =
-        { uri, request, _, responseWriter ->
-            val roomName = uri.substring(urlPrefix.length)
-            val actAsUser =
-                getActingAsUser(loggedUserSystem, request, adminRole, request.getQueryParameter(actAsParameter))
-            val gatheringChatStream = GatheringXmlChatStream()
-            val added = chat.joinUser(
-                roomName,
-                actAsUser.playerId,
-                actAsUser.roles.contains(adminRole),
-                gatheringChatStream
-            )
-            if (added != null) {
-                throw HttpProcessingException(404)
-            }
-            val pollId = longPolling.registerLongPoll(gatheringChatStream.gatheringStream, added)
-            longPolling.registerSink(
-                pollId, XmlEventSink(
-                    createRootElement("chat", pollIdParameterName, pollId),
-                    responseWriter
-                )
-            )
-        }
-
     override fun beforeContextStopped() {
         deregistration.forEach {
             it.run()
         }
         deregistration.clear()
     }
-
-    //Processing to implement:
-    // + quotes restricted to one line
-    // - triple quote to avoid this??
-    // + remove url text processing
-    // + remove image processing
-    // - re-enable bare url linking
-    private inner class LinkShredder(context: HtmlNodeRendererContext) : NodeRenderer {
-        private val html: HtmlWriter = context.writer
-
-        override fun getNodeTypes(): Set<Class<out Node>> {
-            // Return the node types we want to use this renderer for.
-            return HashSet(
-                Arrays.asList(
-                    Link::class.java,
-                    Image::class.java
-                )
-            )
-        }
-
-        override fun render(node: Node) {
-            when (node) {
-                is Link -> {
-                    if (node.title != null) {
-                        html.text(node.title + ": " + node.destination)
-                    } else {
-                        node.firstChild?.takeIf { it is Text && it.literal != node.destination }?.let {
-                            html.text((node.firstChild as Text).literal + ": " + node.destination)
-                        } ?: run {
-                            html.tag("a", Collections.singletonMap("href", node.destination))
-                            html.text(node.destination)
-                            html.tag("/a")
-                        }
-                    }
-                }
-
-                is Image -> {
-                    html.text(node.title + ": " + node.destination)
-                }
-            }
-        }
-    }
-
 }
