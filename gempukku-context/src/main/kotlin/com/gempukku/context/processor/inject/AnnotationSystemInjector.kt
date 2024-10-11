@@ -4,6 +4,7 @@ import com.gempukku.context.GempukkuContext
 import com.gempukku.context.processor.SystemProcessor
 import com.gempukku.context.processor.inject.decorator.SystemDecorator
 import com.gempukku.context.processor.inject.property.PropertyResolver
+import java.lang.reflect.Field
 import java.lang.reflect.ParameterizedType
 import java.lang.reflect.WildcardType
 
@@ -14,50 +15,95 @@ class AnnotationSystemInjector(
     override fun processSystems(context: GempukkuContext, system: Any) {
         system.javaClass.declaredFields.forEach { field ->
             if (field.isAnnotationPresent(Inject::class.java)) {
-                val injectAnnotation = field.getAnnotation(Inject::class.java)
-                val fieldType = field.type as Class<Any>
-
-                val resolvedValues = findValues(context, fieldType, injectAnnotation)
-                when (resolvedValues.size) {
-                    1 -> {
-                        field.trySetAccessible()
-                        field.set(system, decorateIfNeeded(resolvedValues.first(), fieldType))
-                    }
-
-                    0 -> {
-                        if (!injectAnnotation.allowsNull) {
-                            throw InjectionException("Unable to inject system annotated with @Inject into ${system.javaClass.name}::${field.name}, system not found and not allowed to be null")
-                        }
-                    }
-
-                    else -> {
-                        throw InjectionException("Unable to inject system annotated with @Inject into ${system.javaClass.name}::${field.name}, multiple systems matching criteria found")
-                    }
-                }
+                processInject(field, context, system)
             }
             if (field.isAnnotationPresent(InjectList::class.java)) {
-                val injectAnnotation = field.getAnnotation(InjectList::class.java)
-                val fieldType = field.type
-                if (List::class.java.isAssignableFrom(fieldType)) {
-                    val typeParameter = (field.genericType as ParameterizedType).actualTypeArguments[0]
-                    val typeClass = when (typeParameter) {
-                        is WildcardType -> typeParameter.upperBounds[0]
-                        else -> typeParameter
-                    } as Class<Any>
-                    val priorityPrefix =
-                        injectAnnotation.priorityPrefix.takeIf { it.isNotBlank() } ?: typeClass.getAnnotation(
-                            DefaultPriorityPrefix::class.java
-                        )?.value
-                    val resolvedSystems =
-                        findValues(context, typeClass, injectAnnotation, priorityPrefix).sortedBy { -it.second }
-                            .map { it.first }.map { system ->
-                            decorateIfNeeded(system, typeClass)
-                        }
-                    field.trySetAccessible()
-                    field.set(system, resolvedSystems)
-                } else {
-                    throw InjectionException("Unable to inject systems annotated with @InjectList into ${system.javaClass.name}::${field.name}, is not a List")
+                processInjectList(field, context, system)
+            }
+            if (field.isAnnotationPresent(InjectProperty::class.java)) {
+                processInjectProperty(field, system)
+            }
+        }
+    }
+
+    private fun processInjectProperty(field: Field, system: Any) {
+        propertyResolver?.let {
+            val injectAnnotation = field.getAnnotation(InjectProperty::class.java)
+            val fieldType = field.type
+            if (fieldType == String::class.java) {
+                field.trySetAccessible()
+                field.set(system, propertyResolver.resolveProperty(injectAnnotation.value, ""))
+            } else if (fieldType == Int::class.java) {
+                field.trySetAccessible()
+                field.setInt(system, propertyResolver.resolveProperty(injectAnnotation.value, "0")!!.toInt())
+            } else if (fieldType == Long::class.java) {
+                field.trySetAccessible()
+                field.setLong(system, propertyResolver.resolveProperty(injectAnnotation.value, "0")!!.toLong())
+            } else if (fieldType == Float::class.java) {
+                field.trySetAccessible()
+                field.setFloat(system, propertyResolver.resolveProperty(injectAnnotation.value, "0")!!.toFloat())
+            } else if (fieldType == Double::class.java) {
+                field.trySetAccessible()
+                field.setDouble(system, propertyResolver.resolveProperty(injectAnnotation.value, "0")!!.toDouble())
+            } else if (fieldType == Boolean::class.java) {
+                field.trySetAccessible()
+                field.setBoolean(system, propertyResolver.resolveProperty(injectAnnotation.value, "0")!!.toBoolean())
+            }
+        }
+    }
+
+    private fun processInjectList(
+        field: Field,
+        context: GempukkuContext,
+        system: Any
+    ) {
+        val injectAnnotation = field.getAnnotation(InjectList::class.java)
+        val fieldType = field.type
+        if (List::class.java.isAssignableFrom(fieldType)) {
+            val typeParameter = (field.genericType as ParameterizedType).actualTypeArguments[0]
+            val typeClass = when (typeParameter) {
+                is WildcardType -> typeParameter.upperBounds[0]
+                else -> typeParameter
+            } as Class<Any>
+            val priorityPrefix =
+                injectAnnotation.priorityPrefix.takeIf { it.isNotBlank() } ?: typeClass.getAnnotation(
+                    DefaultPriorityPrefix::class.java
+                )?.value
+            val resolvedSystems =
+                findValues(context, typeClass, injectAnnotation, priorityPrefix).sortedBy { -it.second }
+                    .map { it.first }.map { system ->
+                        decorateIfNeeded(system, typeClass)
+                    }
+            field.trySetAccessible()
+            field.set(system, resolvedSystems)
+        } else {
+            throw InjectionException("Unable to inject systems annotated with @InjectList into ${system.javaClass.name}::${field.name}, is not a List")
+        }
+    }
+
+    private fun processInject(
+        field: Field,
+        context: GempukkuContext,
+        system: Any
+    ) {
+        val injectAnnotation = field.getAnnotation(Inject::class.java)
+        val fieldType = field.type as Class<Any>
+
+        val resolvedValues = findValues(context, fieldType, injectAnnotation)
+        when (resolvedValues.size) {
+            1 -> {
+                field.trySetAccessible()
+                field.set(system, decorateIfNeeded(resolvedValues.first(), fieldType))
+            }
+
+            0 -> {
+                if (!injectAnnotation.allowsNull) {
+                    throw InjectionException("Unable to inject system annotated with @Inject into ${system.javaClass.name}::${field.name}, system not found and not allowed to be null")
                 }
+            }
+
+            else -> {
+                throw InjectionException("Unable to inject system annotated with @Inject into ${system.javaClass.name}::${field.name}, multiple systems matching criteria found")
             }
         }
     }

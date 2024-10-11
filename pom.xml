@@ -12,6 +12,7 @@
 
     <modules>
         <module>gempukku-context</module>
+        <module>gempukku-netty-server</module>
     </modules>
 
     <properties>
