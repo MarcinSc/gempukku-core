@@ -13,6 +13,8 @@
     <modules>
         <module>gempukku-context</module>
         <module>gempukku-netty-server</module>
+        <module>gempukku-chat-server</module>
+        <module>gempukku-server</module>
     </modules>
 
     <properties>

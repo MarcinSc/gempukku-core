@@ -1,6 +1,7 @@
 package com.gempukku.server.netty
 
 import com.gempukku.server.BanChecker
+import com.gempukku.server.HttpMethod
 import com.gempukku.server.HttpProcessingException
 import com.gempukku.server.ResponseWriter
 import com.gempukku.server.ServerRequestHandler
@@ -87,7 +88,12 @@ class GempukkuHttpRequestHandler(
                 responseSender.writeError(401)
                 log.info("Denying entry to user from banned IP " + requestInformation.remoteIp)
             } else {
-                requestHandler.handleRequest(uri, httpRequest, requestInformation.remoteIp, responseSender)
+                val externalHttpRequest = when (httpRequest.method().toInternal()) {
+                    HttpMethod.POST -> NettyPostHttpRequest(httpRequest)
+                    else -> NettyGetHttpRequest(httpRequest)
+                }
+
+                requestHandler.handleRequest(uri, externalHttpRequest, requestInformation.remoteIp, responseSender)
             }
         } catch (exp: HttpProcessingException) {
             val code = exp.status
@@ -389,5 +395,12 @@ class GempukkuHttpRequestHandler(
 
             return count
         }
+    }
+}
+
+private fun io.netty.handler.codec.http.HttpMethod.toInternal(): HttpMethod {
+    return when (this) {
+        io.netty.handler.codec.http.HttpMethod.POST -> HttpMethod.POST
+        else -> HttpMethod.GET
     }
 }

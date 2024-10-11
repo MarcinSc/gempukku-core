@@ -73,7 +73,7 @@ class NettyServerSystem : LifecycleObserver, HttpServerSystem {
                             banChecker,
                             { uri, request, remoteIp, responseWriter ->
                                 val registration = registrations.firstOrNull {
-                                    it.method == request.method().toInternal() && it.uriPattern.matcher(uri).matches()
+                                    it.method == request.method && it.uriPattern.matcher(uri).matches()
                                 }
                                 registration?.let {
                                     contextExecutor.submit {
@@ -100,13 +100,6 @@ class NettyServerSystem : LifecycleObserver, HttpServerSystem {
         serverChannel?.close()?.sync()
         workerGroup?.shutdownGracefully()
         bossGroup?.shutdownGracefully()
-    }
-}
-
-private fun io.netty.handler.codec.http.HttpMethod.toInternal(): HttpMethod {
-    return when (this) {
-        io.netty.handler.codec.http.HttpMethod.POST -> HttpMethod.POST
-        else -> HttpMethod.GET
     }
 }
 

@@ -4,10 +4,10 @@ import com.gempukku.context.lifecycle.LifecycleObserver
 import com.gempukku.context.processor.inject.Inject
 import com.gempukku.context.resolver.expose.Exposes
 import com.gempukku.server.HttpMethod
+import com.gempukku.server.HttpRequest
 import com.gempukku.server.HttpServerSystem
 import com.gempukku.server.ResponseWriter
 import com.gempukku.server.ServerRequestHandler
-import io.netty.handler.codec.http.HttpRequest
 import java.util.regex.Pattern
 
 @Exposes(LifecycleObserver::class)
@@ -20,6 +20,6 @@ class ExampleRequestHandler : ServerRequestHandler, LifecycleObserver {
     }
 
     override fun afterContextStartup() {
-        serverSystem.registerRequestHandler(HttpMethod.GET, Pattern.compile("/example"), this)
+        serverSystem.registerRequestHandler(HttpMethod.GET, Pattern.compile("^/example$"), this)
     }
 }

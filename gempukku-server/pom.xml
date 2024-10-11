@@ -2,26 +2,20 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
     <parent>
-        <artifactId>gempukku</artifactId>
         <groupId>com.gempukku</groupId>
+        <artifactId>gempukku</artifactId>
         <version>1.0-SNAPSHOT</version>
     </parent>
-    <modelVersion>4.0.0</modelVersion>
-    <artifactId>gempukku-netty-server</artifactId>
-    <packaging>jar</packaging>
+
+    <artifactId>gempukku-server</artifactId>
 
     <dependencies>
         <dependency>
-            <artifactId>gempukku-server</artifactId>
+            <artifactId>gempukku-context</artifactId>
             <groupId>com.gempukku</groupId>
             <version>1.0-SNAPSHOT</version>
-        </dependency>
-        <!-- https://mvnrepository.com/artifact/io.netty/netty-all -->
-        <dependency>
-            <groupId>io.netty</groupId>
-            <artifactId>netty-all</artifactId>
-            <version>4.1.114.Final</version>
         </dependency>
     </dependencies>
 </project>
